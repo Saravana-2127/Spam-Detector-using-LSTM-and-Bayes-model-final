@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Signal Check — Spam & Phishing Detector</title>
+  <style>
+    :root {
+      --bg: #0f1216;
+      --panel: #161a20;
+      --panel-line: #262c35;
+      --text: #e7ebf0;
+      --muted: #8a94a3;
+      --safe: #4ade80;
+      --suspicious: #f5b942;
+      --alert: #f0555a;
+      --accent: #5b8cff;
+      --mono: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+      --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      padding: 48px 20px;
+    }
+
+    .console { width: 100%; max-width: 680px; }
+
+    .console-head { margin-bottom: 28px; }
+    .console-head .kicker {
+      font-family: var(--mono);
+      font-size: 13px;
+      color: var(--accent);
+      letter-spacing: 0.02em;
+    }
+    .console-head h1 {
+      font-size: 28px;
+      margin: 6px 0 8px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+    }
+    .console-head p {
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.5;
+      margin: 0;
+      max-width: 54ch;
+    }
+
+    .learned-banner {
+      margin-top: 18px;
+      background: rgba(74, 222, 128, 0.1);
+      border: 1px solid rgba(74, 222, 128, 0.35);
+      color: var(--safe);
+      font-family: var(--mono);
+      font-size: 13px;
+      padding: 10px 14px;
+      border-radius: 8px;
+    }
+
+    form { margin-top: 28px; }
+
+    textarea {
+      width: 100%;
+      min-height: 140px;
+      background: var(--panel);
+      border: 1px solid var(--panel-line);
+      border-radius: 10px;
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 14.5px;
+      line-height: 1.6;
+      padding: 16px;
+      resize: vertical;
+    }
+    textarea:focus { outline: none; border-color: var(--accent); }
+
+    .actions { display: flex; justify-content: flex-end; margin-top: 14px; }
+
+    button {
+      background: var(--accent);
+      color: #0b0f14;
+      border: none;
+      border-radius: 8px;
+      padding: 11px 22px;
+      font-size: 14.5px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: var(--sans);
+    }
+    button:hover { opacity: 0.9; }
+
+    button.secondary {
+      background: transparent;
+      color: var(--text);
+      border: 1px solid var(--panel-line);
+      padding: 8px 16px;
+      font-size: 13px;
+    }
+    button.secondary:hover { background: rgba(255, 255, 255, 0.05); }
+
+    /* ---- Risk Meter ---- */
+    .risk-card {
+      margin-top: 32px;
+      background: var(--panel);
+      border: 1px solid var(--panel-line);
+      border-radius: 12px;
+      padding: 22px 24px;
+    }
+
+    .risk-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 10px;
+    }
+
+    .risk-label { font-family: var(--mono); font-size: 12.5px; color: var(--muted); }
+
+    .risk-tier { font-size: 20px; font-weight: 700; }
+    .risk-tier.SAFE { color: var(--safe); }
+    .risk-tier.SUSPICIOUS { color: var(--suspicious); }
+    .risk-tier.HIGH_RISK { color: var(--alert); }
+
+    .risk-score-num {
+      font-family: var(--mono);
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .meter-track {
+      height: 10px;
+      border-radius: 999px;
+      background: linear-gradient(90deg, var(--safe) 0%, var(--suspicious) 50%, var(--alert) 100%);
+      position: relative;
+      margin-top: 6px;
+    }
+    .meter-pin {
+      position: absolute;
+      top: -4px;
+      width: 3px;
+      height: 18px;
+      background: #fff;
+      border-radius: 2px;
+      transform: translateX(-1.5px);
+    }
+
+    /* ---- Model Comparison Cards ---- */
+    .results {
+      margin-top: 16px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+    @media (max-width: 520px) { .results { grid-template-columns: 1fr; } }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--panel-line);
+      border-radius: 10px;
+      padding: 20px;
+    }
+    .card .model-name { font-family: var(--mono); font-size: 12.5px; color: var(--muted); }
+    .card .verdict { font-size: 22px; font-weight: 700; margin: 8px 0 12px; }
+    .card .verdict.spam { color: var(--alert); }
+    .card .verdict.ham { color: var(--safe); }
+
+    .bar-track { height: 6px; background: #232830; border-radius: 999px; overflow: hidden; }
+    .bar-fill { height: 100%; border-radius: 999px; }
+    .bar-fill.spam { background: var(--alert); }
+    .bar-fill.ham { background: var(--safe); }
+    .prob-label { font-family: var(--mono); font-size: 12.5px; color: var(--muted); margin-top: 8px; }
+
+    /* ---- Explainability Sections ---- */
+    .reasons {
+      margin-top: 16px;
+      background: var(--panel);
+      border: 1px solid var(--panel-line);
+      border-radius: 10px;
+      padding: 18px 20px;
+    }
+    .reasons .section-label {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 10px;
+      word-break: break-all;
+    }
+    .reason-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--panel-line);
+      font-size: 14px;
+      gap: 12px;
+    }
+    .reason-row:last-child { border-bottom: none; }
+    .reason-word { font-family: var(--mono); word-break: break-all; }
+    .reason-tag {
+      font-family: var(--mono);
+      font-size: 11.5px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      white-space: nowrap;
+    }
+    .reason-tag.spam-like { background: rgba(240, 85, 90, 0.15); color: var(--alert); }
+    .reason-tag.ham-like { background: rgba(74, 222, 128, 0.15); color: var(--safe); }
+
+    /* ---- Feedback Block ---- */
+    .feedback-block {
+      margin-top: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .feedback-block p {
+      font-size: 13.5px;
+      color: var(--muted);
+      margin: 0;
+    }
+    .feedback-buttons { display: flex; gap: 8px; }
+    .feedback-buttons form { margin: 0; }
+
+    footer {
+      margin-top: 36px;
+      font-family: var(--mono);
+      font-size: 12px;
+      color: #4b525e;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div class="console">
+    <div class="console-head">
+      <div class="kicker">SIGNAL CHECK</div>
+      <h1>Paste a message to check it for spam</h1>
+      <p>Runs Naive Bayes, LSTM, live redirect unrolling, brand impersonation, and HTML scraping to evaluate text and embedded links.</p>
+    </div>
+
+    {% if just_learned %}
+    <div class="learned-banner">✓ Models updated with your feedback ({{ feedback_count }} corrections learned so far).</div>
+    {% endif %}
+
+    <form method="POST" action="/">
+      <textarea name="message" placeholder="e.g. Congratulations! You've won a $1000 gift card, click here to claim: https://bit.ly/xyz">{{ message }}</textarea>
+      <div class="actions">
+        <button type="submit">Check message</button>
+      </div>
+    </form>
+
+    {% if result %}
+    <div class="risk-card">
+      <div class="risk-top">
+        <div>
+          <div class="risk-label">COMBINED RISK</div>
+          <div class="risk-tier {{ result.level.replace(' ', '_') }}">{{ result.level }}</div>
+        </div>
+        <div class="risk-score-num">{{ result.risk_score }} / 100</div>
+      </div>
+      <div class="meter-track">
+        <div class="meter-pin" style="left: {{ result.risk_score }}%;"></div>
+      </div>
+    </div>
+
+    <div class="results">
+      <div class="card">
+        <div class="model-name">NAIVE BAYES</div>
+        <div class="verdict {{ 'spam' if result.nb_label == 'SPAM' else 'ham' }}">{{ result.nb_label }}</div>
+        <div class="bar-track">
+          <div class="bar-fill {{ 'spam' if result.nb_label == 'SPAM' else 'ham' }}" style="width: {{ result.nb_prob }}%;"></div>
+        </div>
+        <div class="prob-label">{{ result.nb_prob }}% spam probability</div>
+      </div>
+
+      <div class="card">
+        <div class="model-name">LSTM</div>
+        <div class="verdict {{ 'spam' if result.lstm_label == 'SPAM' else 'ham' }}">{{ result.lstm_label }}</div>
+        <div class="bar-track">
+          <div class="bar-fill {{ 'spam' if result.lstm_label == 'SPAM' else 'ham' }}" style="width: {{ result.lstm_prob }}%;"></div>
+        </div>
+        <div class="prob-label">{{ result.lstm_prob }}% spam probability</div>
+      </div>
+    </div>
+
+    {% if result.reasons %}
+    <div class="reasons">
+      <div class="section-label">WHY (TEXT) — top words driving the decision</div>
+      {% for r in result.reasons %}
+      <div class="reason-row">
+        <span class="reason-word">{{ r.word }}</span>
+        <span class="reason-tag {{ r.direction.replace(' ', '-') }}">{{ r.direction }} · {{ r.strength }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if result.links %}
+    {% for link in result.links %}
+    <div class="reasons link-card">
+      <div class="section-label">LINK ANALYSIS — {{ link.url }}</div>
+      <div class="reason-row">
+        <span class="reason-word">Verdict</span>
+        <span class="reason-tag {{ 'spam-like' if link.label == 'MALICIOUS' else 'ham-like' }}">{{ link.label }} · {{ link.malicious_prob }}%</span>
+      </div>
+      {% for reason in link.reasons %}
+      <div class="reason-row">
+        <span class="reason-word">⚠</span>
+        <span style="color: var(--muted); font-size: 13px; width: 100%;">{{ reason }}</span>
+      </div>
+      {% endfor %}
+      {% if not link.reasons %}
+      <div class="reason-row">
+        <span style="color: var(--muted); font-size: 13px;">No structural red flags found in this link.</span>
+      </div>
+      {% endif %}
+    </div>
+    {% endfor %}
+    {% endif %}
+
+    <div class="feedback-block">
+      <p>Was this verdict correct?</p>
+      <div class="feedback-buttons">
+        <form method="POST" action="/feedback">
+          <input type="hidden" name="message" value="{{ result.message | forceescape }}">
+          <input type="hidden" name="predicted_label" value="{{ result.predicted_label }}">
+          <input type="hidden" name="corrected_label" value="spam">
+          <button type="submit" class="secondary">Actually spam</button>
+        </form>
+        <form method="POST" action="/feedback">
+          <input type="hidden" name="message" value="{{ result.message | forceescape }}">
+          <input type="hidden" name="predicted_label" value="{{ result.predicted_label }}">
+          <input type="hidden" name="corrected_label" value="ham">
+          <button type="submit" class="secondary">Actually ham</button>
+        </form>
+      </div>
+    </div>
+    {% endif %}
+
+    <footer>Trained on SMS Spam Collection · {{ feedback_count }} adaptive corrections learned</footer>
+  </div>
+</body>
+</html>
